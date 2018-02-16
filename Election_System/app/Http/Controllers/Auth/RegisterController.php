@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Auth;
 
 use App\User;
+use Illuminate\Support\Str;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Foundation\Auth\RegistersUsers;
-
+use Mail;
+use Session;
+use App\Mail\verifyEmail;
 class RegisterController extends Controller
 {
     /*
@@ -50,7 +53,7 @@ class RegisterController extends Controller
         return Validator::make($data, [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'department' => 'required|string|max:255|unique:users',
+            'department' => 'required|string|max:255',
             'phone' => 'required|string|max:255|unique:users',
             'password' => 'required|string|min:6|confirmed',
         ]);
@@ -64,12 +67,41 @@ class RegisterController extends Controller
      */
     protected function create(array $data)
     {
-        return User::create([
+        Session::flush('status', 'Registered! But verify your email to Activate your account');
+        $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'department' => $data['department'],
             'phone' => $data['phone'],
             'password' => bcrypt($data['password']),
+            'VerifyToken' => Str::random(40)
         ]);
+
+        $thisuser = User::findOrFail($user->id);
+        $this->sendEmail($thisuser);
+        return $user;
+    }
+
+
+    public function sendEmail($thisuser)
+    {
+        Mail::to($thisuser['email'])->send(new verifyEmail($thisuser));
+    }
+
+    public function verifyEmailFirst()
+    {
+        return view('email.verifyEmailFirst');
+    }
+
+    public function sendEmailDone($email, $VerifyToken)
+    {
+        
+        $user = User::where(['email' => $email, 'VerifyToken' => $VerifyToken])->first();
+        if($user){
+         User::where(['email' => $email, 'VerifyToken' => $VerifyToken])->update(['status'=>'1' , 'VerifyToken'=>NULL]);
+         return view('auth.login');
+        }else{
+            return "User Not Found";
+        }
     }
 }
